@@ -1,0 +1,45 @@
+{
+    "name": "larasell-dev/stripe",
+    "description": "Stripe payments for Larasell",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Larasell\\Stripe\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Larasell\\Stripe\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Larasell\\Stripe\\StripeServiceProvider"
+            ]
+        }
+    },
+    "require": {
+        "php": "^8.2",
+        "larasell-dev/larasell": "^1.1",
+        "stripe/stripe-php": "^21.3"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.30",
+        "orchestra/testbench": "^11.0",
+        "pestphp/pest": "^5.1"
+    },
+    "scripts": {
+        "pint": "pint",
+        "pest": "pest"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
