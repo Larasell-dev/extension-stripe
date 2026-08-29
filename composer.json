@@ -26,6 +26,7 @@
         "stripe/stripe-php": "^21.3"
     },
     "require-dev": {
+        "laravel/pao": "^1.1",
         "laravel/pint": "^1.30",
         "orchestra/testbench": "^11.0",
         "pestphp/pest": "^5.1"
