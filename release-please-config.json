@@ -1,0 +1,11 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "php",
+      "package-name": "larasell-dev/stripe",
+      "extra-files": [
+        "version.txt"
+      ]
+    }
+  }
+}

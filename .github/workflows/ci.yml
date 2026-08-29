@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pint:
+    name: Pint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: composer pint -- --test
+
+  pest:
+    name: Pest (${{ matrix.database }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: SQLite
+            connection: sqlite
+            mysql-image: ''
+            postgres-image: ''
+          - database: MySQL
+            connection: mysql
+            mysql-image: mysql:8.4
+            postgres-image: ''
+          - database: PostgreSQL
+            connection: pgsql
+            mysql-image: ''
+            postgres-image: postgres:17
+
+    services:
+      mysql:
+        image: ${{ matrix.mysql-image }}
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: testing
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      postgres:
+        image: ${{ matrix.postgres-image }}
+        env:
+          POSTGRES_DB: testing
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DB_CONNECTION: ${{ matrix.connection }}
+      DB_HOST: 127.0.0.1
+      DB_PORT: ${{ matrix.connection == 'mysql' && '3306' || '5432' }}
+      DB_DATABASE: ${{ matrix.connection == 'sqlite' && ':memory:' || 'testing' }}
+      DB_USERNAME: ${{ matrix.connection == 'mysql' && 'root' || 'postgres' }}
+      DB_PASSWORD: ${{ matrix.connection == 'pgsql' && 'password' || '' }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql, pdo_pgsql
+          tools: composer:v2
+          coverage: none
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: composer pest
