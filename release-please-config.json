@@ -3,6 +3,7 @@
     ".": {
       "release-type": "php",
       "package-name": "larasell-dev/stripe",
+      "include-component-in-tag": false,
       "extra-files": [
         "version.txt"
       ]
