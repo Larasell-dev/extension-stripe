@@ -85,6 +85,37 @@ Configure Stripe to deliver these events:
 Webhook signatures are verified and Stripe event IDs are stored to prevent
 duplicate processing. Browser redirects never mark an order as paid.
 
+Also configure Stripe to deliver the refund lifecycle events:
+
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
+
+## Refunds
+
+Create full or partial refunds from a successful Stripe payment:
+
+```php
+$refund = $payment->refund();
+
+$refund = $payment->refund(Price::of(2500));
+```
+
+Amounts use the same integer minor units as Larasell prices. Stripe refund
+options such as a reason can be passed separately:
+
+```php
+$refund = $payment->refund(Price::of(2500), [
+    'refund_options' => [
+        'reason' => 'requested_by_customer',
+    ],
+]);
+```
+
+The initial Stripe response sets the local refund status. Pending refunds are
+subsequently finalized by signed webhooks. Refunding never cancels an order;
+an unfulfilled, fully refunded order can be cancelled explicitly.
+
 To register the webhook route yourself, call this before package providers boot:
 
 ```php
