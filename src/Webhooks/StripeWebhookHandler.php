@@ -4,11 +4,14 @@ namespace Larasell\Stripe\Webhooks;
 
 use Illuminate\Database\ConnectionInterface;
 use Larasell\Larasell\Enums\PaymentStatus;
+use Larasell\Larasell\Enums\RefundStatus;
 use Larasell\Larasell\Models\ModelRegistry;
 use Larasell\Larasell\Models\Payment;
+use Larasell\Larasell\Models\Refund as LarasellRefund;
 use Larasell\Stripe\Models\StripeWebhookEvent;
 use Stripe\Checkout\Session;
 use Stripe\Event;
+use Stripe\Refund;
 
 final readonly class StripeWebhookHandler
 {
@@ -33,8 +36,44 @@ final readonly class StripeWebhookHandler
                 $this->handleSession($event->type, $event->data->object);
             }
 
+            if ($event->data->object instanceof Refund) {
+                $this->handleRefund($event->type, $event->data->object);
+            }
+
             $record->update(['processed_at' => now()]);
         });
+    }
+
+    private function handleRefund(string $type, Refund $stripeRefund): void
+    {
+        if (! in_array($type, ['refund.created', 'refund.updated', 'refund.failed'], true)) {
+            return;
+        }
+
+        $refundId = (string) ($stripeRefund->metadata->refund_id ?? '');
+
+        /** @var LarasellRefund|null $refund */
+        $refund = $this->models->refund->query()
+            ->where('provider', config('larasell-stripe.driver', 'stripe'))
+            ->whereKey($refundId)
+            ->first();
+
+        if ($refund === null
+            || ($refund->reference !== null && $refund->reference !== $stripeRefund->id)
+            || (string) $refund->payment_id !== (string) ($stripeRefund->metadata->payment_id ?? '')) {
+            return;
+        }
+
+        if ($refund->reference === null) {
+            $refund->update(['reference' => $stripeRefund->id]);
+        }
+
+        match ($stripeRefund->status) {
+            Refund::STATUS_SUCCEEDED => $this->succeedRefund($refund),
+            Refund::STATUS_FAILED => $this->failRefund($refund, $stripeRefund->failure_reason),
+            Refund::STATUS_CANCELED => $this->cancelRefund($refund),
+            default => null,
+        };
     }
 
     private function handleSession(string $type, Session $session): void
@@ -88,6 +127,27 @@ final readonly class StripeWebhookHandler
     {
         if (in_array($payment->status, [PaymentStatus::Pending, PaymentStatus::Cancelled], true)) {
             $payment->cancel();
+        }
+    }
+
+    private function succeedRefund(LarasellRefund $refund): void
+    {
+        if (in_array($refund->status, [RefundStatus::Pending, RefundStatus::Succeeded], true)) {
+            $refund->markAsSucceeded();
+        }
+    }
+
+    private function failRefund(LarasellRefund $refund, ?string $reason): void
+    {
+        if (in_array($refund->status, [RefundStatus::Pending, RefundStatus::Failed], true)) {
+            $refund->markAsFailed($reason ?? 'Stripe reported that the refund failed.');
+        }
+    }
+
+    private function cancelRefund(LarasellRefund $refund): void
+    {
+        if (in_array($refund->status, [RefundStatus::Pending, RefundStatus::Cancelled], true)) {
+            $refund->cancel();
         }
     }
 }

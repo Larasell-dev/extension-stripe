@@ -4,15 +4,23 @@ namespace Larasell\Stripe;
 
 use InvalidArgumentException;
 use Larasell\Larasell\Contracts\PaymentProvider;
+use Larasell\Larasell\Contracts\RefundProvider;
 use Larasell\Larasell\Payments\PaymentRequest;
 use Larasell\Larasell\Payments\PaymentResult;
 use Larasell\Larasell\Payments\RedirectPaymentAction;
+use Larasell\Larasell\Refunds\RefundRequest;
+use Larasell\Larasell\Refunds\RefundResult;
 use Larasell\Stripe\Contracts\CreatesCheckoutSessions;
+use Larasell\Stripe\Contracts\CreatesRefunds;
 use RuntimeException;
+use Stripe\Refund;
 
-final readonly class StripePaymentProvider implements PaymentProvider
+final readonly class StripePaymentProvider implements PaymentProvider, RefundProvider
 {
-    public function __construct(private CreatesCheckoutSessions $sessions) {}
+    public function __construct(
+        private CreatesCheckoutSessions $sessions,
+        private ?CreatesRefunds $refunds = null,
+    ) {}
 
     public function initiate(PaymentRequest $request): PaymentResult
     {
@@ -65,6 +73,52 @@ final readonly class StripePaymentProvider implements PaymentProvider
             reference: $session->id,
             action: new RedirectPaymentAction($session->url),
         );
+    }
+
+    public function refund(RefundRequest $request): RefundResult
+    {
+        if ($this->refunds === null) {
+            throw new RuntimeException('The Stripe refund client is not configured.');
+        }
+
+        $refundOptions = $request->option('refund_options', []);
+        $apiOptions = $request->option('api_options', []);
+
+        if (! is_array($refundOptions) || ! is_array($apiOptions)) {
+            throw new InvalidArgumentException('Stripe refund_options and api_options must be arrays.');
+        }
+
+        if (! is_string($request->payment->reference) || $request->payment->reference === '') {
+            throw new RuntimeException('The Stripe payment does not have a Checkout Session reference.');
+        }
+
+        $metadata = is_array($refundOptions['metadata'] ?? null)
+            ? $refundOptions['metadata']
+            : [];
+        $parameters = array_replace($refundOptions, [
+            'amount' => (int) $request->refund->amount->amount(),
+            'metadata' => array_replace($metadata, [
+                'payment_id' => (string) $request->payment->getKey(),
+                'refund_id' => (string) $request->refund->getKey(),
+            ]),
+        ]);
+        $refund = $this->refunds->create(
+            $request->payment->reference,
+            $parameters,
+            array_replace($apiOptions, [
+                'idempotency_key' => 'larasell-refund-'.$request->refund->getKey(),
+            ]),
+        );
+
+        return match ($refund->status) {
+            Refund::STATUS_SUCCEEDED => RefundResult::succeeded($refund->id),
+            Refund::STATUS_FAILED => RefundResult::failed(
+                $refund->failure_reason ?? 'Stripe reported that the refund failed.',
+                $refund->id,
+            ),
+            Refund::STATUS_CANCELED => RefundResult::cancelled($refund->id),
+            default => RefundResult::pending($refund->id),
+        };
     }
 
     /** @return array<int, array<string, mixed>> */
