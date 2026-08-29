@@ -116,11 +116,6 @@ The initial Stripe response sets the local refund status. Pending refunds are
 subsequently finalized by signed webhooks. Refunding never cancels an order;
 an unfulfilled, fully refunded order can be cancelled explicitly.
 
-Refunds created manually in the Stripe Dashboard are imported through the same
-webhooks. The package resolves the Larasell payment from the `payment_id`
-metadata placed on the Stripe Payment Intent during Checkout, then creates one
-local refund per Stripe refund ID and synchronizes its amount and status.
-
 To register the webhook route yourself, call this before package providers boot:
 
 ```php

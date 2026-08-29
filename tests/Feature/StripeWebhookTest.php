@@ -8,19 +8,7 @@ use Larasell\Larasell\Models\Order;
 use Larasell\Larasell\Models\Payment;
 use Larasell\Larasell\Models\Refund;
 use Larasell\Larasell\Price;
-use Larasell\Stripe\Contracts\ResolvesRefundPayments;
 use Larasell\Stripe\Models\StripeWebhookEvent;
-use Stripe\Refund as StripeRefund;
-
-final class FakeRefundPaymentResolver implements ResolvesRefundPayments
-{
-    public function __construct(public ?string $paymentId) {}
-
-    public function resolve(StripeRefund $refund): ?string
-    {
-        return $this->paymentId;
-    }
-}
 
 it('rejects webhooks with an invalid signature', function () {
     $this->postJson('/larasell/stripe/webhook', [])
@@ -145,34 +133,6 @@ it('recovers a refund reference when the Stripe API response was lost', function
         ->and($refund->fresh()->status)->toBe(RefundStatus::Succeeded);
 });
 
-it('imports a refund created in the Stripe dashboard only once', function () {
-    [, $payment] = stripeWebhookPayment('cs_dashboard_refund', 'DASHBOARD-REFUND');
-    $payment->markAsPaid();
-    app()->instance(ResolvesRefundPayments::class, new FakeRefundPaymentResolver((string) $payment->id));
-
-    stripeWebhookRequest($this, stripeDashboardRefundEventPayload(
-        'evt_dashboard_refund_created',
-        're_dashboard',
-        'succeeded',
-        650,
-    ))->assertOk();
-    stripeWebhookRequest($this, stripeDashboardRefundEventPayload(
-        'evt_dashboard_refund_updated',
-        're_dashboard',
-        'succeeded',
-        650,
-        'refund.updated',
-    ))->assertOk();
-
-    $refund = $payment->refunds()->sole();
-
-    expect($refund->provider)->toBe('stripe')
-        ->and($refund->reference)->toBe('re_dashboard')
-        ->and($refund->amount->amount())->toBe('650')
-        ->and($refund->status)->toBe(RefundStatus::Succeeded)
-        ->and($payment->refunds()->count())->toBe(1);
-});
-
 /** @return array{Order, Payment} */
 function stripeWebhookPayment(string $reference, string $number = 'WEBHOOK'): array
 {
@@ -237,28 +197,6 @@ function stripeRefundEventPayload(
         'object' => 'event',
         'type' => $type,
         'data' => ['object' => $stripeRefund],
-    ], JSON_THROW_ON_ERROR);
-}
-
-function stripeDashboardRefundEventPayload(
-    string $eventId,
-    string $refundId,
-    string $status,
-    int $amount,
-    string $type = 'refund.created',
-): string {
-    return json_encode([
-        'id' => $eventId,
-        'object' => 'event',
-        'type' => $type,
-        'data' => ['object' => [
-            'id' => $refundId,
-            'object' => 'refund',
-            'amount' => $amount,
-            'payment_intent' => 'pi_dashboard',
-            'status' => $status,
-            'metadata' => [],
-        ]],
     ], JSON_THROW_ON_ERROR);
 }
 

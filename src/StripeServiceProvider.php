@@ -6,7 +6,6 @@ use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 use Larasell\Stripe\Contracts\CreatesCheckoutSessions;
 use Larasell\Stripe\Contracts\CreatesRefunds;
-use Larasell\Stripe\Contracts\ResolvesRefundPayments;
 use Stripe\StripeClient;
 
 final class StripeServiceProvider extends ServiceProvider
@@ -27,7 +26,6 @@ final class StripeServiceProvider extends ServiceProvider
 
         $this->app->singleton(CreatesCheckoutSessions::class, StripeCheckoutClient::class);
         $this->app->singleton(CreatesRefunds::class, StripeRefundClient::class);
-        $this->app->singleton(ResolvesRefundPayments::class, StripeRefundPaymentResolver::class);
     }
 
     public function boot(): void
