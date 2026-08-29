@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/Larasell-dev/extension-stripe/compare/v0.2.0...v0.3.0) (2026-08-29)
+
+
+### Features
+
+* add support to refunds ([#5](https://github.com/Larasell-dev/extension-stripe/issues/5)) ([735c56f](https://github.com/Larasell-dev/extension-stripe/commit/735c56f025556f914c39e6fa9ec574ac31b06089))
+
+
+### Miscellaneous Chores
+
+* stop including component in tag ([fad51d8](https://github.com/Larasell-dev/extension-stripe/commit/fad51d8c669cffbdae3075c71a4bc396ce82ccd7))
+
 ## [0.2.0](https://github.com/Larasell-dev/extension-stripe/compare/larasell-dev/stripe-v0.1.0...larasell-dev/stripe-v0.2.0) (2026-08-29)
 
 
