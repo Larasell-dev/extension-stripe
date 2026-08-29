@@ -8,6 +8,8 @@ use Larasell\Larasell\Enums\RefundStatus;
 use Larasell\Larasell\Models\ModelRegistry;
 use Larasell\Larasell\Models\Payment;
 use Larasell\Larasell\Models\Refund as LarasellRefund;
+use Larasell\Larasell\Price;
+use Larasell\Stripe\Contracts\ResolvesRefundPayments;
 use Larasell\Stripe\Models\StripeWebhookEvent;
 use Stripe\Checkout\Session;
 use Stripe\Event;
@@ -18,6 +20,7 @@ final readonly class StripeWebhookHandler
     public function __construct(
         private ConnectionInterface $database,
         private ModelRegistry $models,
+        private ResolvesRefundPayments $refundPayments,
     ) {}
 
     public function handle(Event $event): void
@@ -50,18 +53,53 @@ final readonly class StripeWebhookHandler
             return;
         }
 
+        $provider = config('larasell-stripe.driver', 'stripe');
         $refundId = (string) ($stripeRefund->metadata->refund_id ?? '');
+        $paymentId = (string) ($stripeRefund->metadata->payment_id ?? '');
 
         /** @var LarasellRefund|null $refund */
         $refund = $this->models->refund->query()
-            ->where('provider', config('larasell-stripe.driver', 'stripe'))
-            ->whereKey($refundId)
+            ->where('provider', $provider)
+            ->where('reference', $stripeRefund->id)
             ->first();
 
-        if ($refund === null
-            || ($refund->reference !== null && $refund->reference !== $stripeRefund->id)
-            || (string) $refund->payment_id !== (string) ($stripeRefund->metadata->payment_id ?? '')) {
+        if ($refund === null && $refundId !== '') {
+            $refund = $this->models->refund->query()
+                ->where('provider', $provider)
+                ->whereKey($refundId)
+                ->first();
+        }
+
+        if ($refund !== null && (
+            ($refund->reference !== null && $refund->reference !== $stripeRefund->id)
+            || ($paymentId !== '' && (string) $refund->payment_id !== $paymentId)
+        )) {
             return;
+        }
+
+        if ($refund === null) {
+            $paymentId = $paymentId !== '' ? $paymentId : $this->refundPayments->resolve($stripeRefund);
+            $amount = $stripeRefund->amount;
+
+            if ($paymentId === null || ! is_int($amount) || $amount <= 0) {
+                return;
+            }
+
+            /** @var Payment|null $payment */
+            $payment = $this->models->payment->query()
+                ->where('provider', $provider)
+                ->whereKey($paymentId)
+                ->first();
+
+            if ($payment === null || $payment->status !== PaymentStatus::Succeeded) {
+                return;
+            }
+
+            /** @var LarasellRefund $refund */
+            $refund = $payment->refunds()->firstOrCreate(
+                ['provider' => $provider, 'reference' => $stripeRefund->id],
+                ['status' => RefundStatus::Pending, 'amount' => Price::of($amount)],
+            );
         }
 
         if ($refund->reference === null) {
