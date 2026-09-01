@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/Larasell-dev/extension-stripe/compare/v0.3.1...v0.3.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* display line items in checkout ([a2c9357](https://github.com/Larasell-dev/extension-stripe/commit/a2c93577f25fa8a944c5c93a8db6fec9b79c635b))
+
 ## [0.3.1](https://github.com/Larasell-dev/extension-stripe/compare/v0.3.0...v0.3.1) (2026-09-01)
 
 
