@@ -10,6 +10,8 @@ use Larasell\Larasell\Models\Cart;
 use Larasell\Larasell\Models\Order;
 use Larasell\Larasell\Models\Payment;
 use Larasell\Larasell\Models\Product;
+use Larasell\Larasell\Payments\PaymentBreakdown;
+use Larasell\Larasell\Payments\PaymentLine;
 use Larasell\Larasell\Payments\PaymentRequest;
 use Larasell\Larasell\Payments\RedirectPaymentAction;
 use Larasell\Larasell\Price;
@@ -108,13 +110,13 @@ it('creates a Stripe Checkout Session and returns a redirect action', function (
         ->and($sessions->parameters['line_items'])->toHaveCount(1)
         ->and($sessions->parameters['line_items'][0]['quantity'])->toBe(1)
         ->and($sessions->parameters['line_items'][0]['price_data']['unit_amount'])->toBe(2598)
-        ->and($sessions->parameters['line_items'][0]['price_data']['product_data']['name'])->toBe('Order '.$result->order->number)
+        ->and($sessions->parameters['line_items'][0]['price_data']['product_data']['name'])->toBe('2 x Stripe coffee')
         ->and($sessions->parameters['metadata']['payment_id'])->toBe((string) $result->payment->id)
         ->and($sessions->parameters['payment_intent_data']['metadata']['order_id'])->toBe((string) $result->order->id)
         ->and($sessions->options['idempotency_key'])->toBe('larasell-payment-'.$result->payment->id);
 });
 
-it('charges the authoritative payment amount instead of rebuilding the order total', function () {
+it('sends product and shipping breakdown lines whose amounts match the payment', function () {
     $sessions = new FakeCheckoutSessions;
     $provider = new StripePaymentProvider($sessions);
     $order = Order::query()->create([
@@ -155,17 +157,33 @@ it('charges the authoritative payment amount instead of rebuilding the order tot
         'stripe',
         $order->load('items'),
         $payment,
+        new PaymentBreakdown(
+            lines: [
+                new PaymentLine('order-item:1', 'Coffee beans', 2, Price::of(1600), [
+                    'sku' => 'COFFEE-1KG',
+                    'variant_details' => ['Roast' => 'Dark'],
+                ]),
+            ],
+            shipping: new PaymentLine('shipping', 'DHL Standard', 1, Price::of(500)),
+            total: Price::of(2100),
+        ),
         [
             'success_url' => 'https://shop.test/success',
             'cancel_url' => 'https://shop.test/cancel',
         ],
     ));
 
-    expect($sessions->parameters['line_items'])->toHaveCount(1)
+    expect($sessions->parameters['line_items'])->toHaveCount(2)
         ->and($sessions->parameters['line_items'][0]['quantity'])->toBe(1)
-        ->and($sessions->parameters['line_items'][0]['price_data']['unit_amount'])->toBe(2100)
+        ->and($sessions->parameters['line_items'][0]['price_data']['unit_amount'])->toBe(1600)
         ->and($sessions->parameters['line_items'][0]['price_data']['product_data']['name'])
-        ->toBe('Order STRIPE-AUTHORITATIVE-TOTAL');
+        ->toBe('2 x Coffee beans')
+        ->and($sessions->parameters['line_items'][0]['price_data']['product_data']['description'])
+        ->toBe('COFFEE-1KG | Roast: Dark')
+        ->and($sessions->parameters['line_items'][1]['quantity'])->toBe(1)
+        ->and($sessions->parameters['line_items'][1]['price_data']['unit_amount'])->toBe(500)
+        ->and($sessions->parameters['line_items'][1]['price_data']['product_data']['name'])
+        ->toBe('DHL Standard');
 });
 
 it('records a useful message when Stripe omits the refund failure reason', function () {
@@ -210,6 +228,11 @@ it('requires success and cancel URLs', function () {
         'stripe',
         $order,
         $payment,
+        new PaymentBreakdown(
+            [new PaymentLine('order-item:1', 'Test product', 1, Price::of(100))],
+            null,
+            Price::of(100),
+        ),
     )))->toThrow(InvalidArgumentException::class, 'The Stripe success_url payment option is required.');
 });
 
