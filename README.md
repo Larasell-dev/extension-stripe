@@ -56,6 +56,10 @@ Additional Stripe Checkout Session options can be supplied under
 `session_options`. Larasell-controlled amount, customer, URL, and metadata
 fields cannot be overridden.
 
+Stripe Checkout receives the persisted Larasell payment amount as one
+order-level line item. Larasell remains authoritative for discounts, shipping,
+taxes, and rounding, so Stripe collects the exact order total.
+
 ```php
 paymentOptions: [
     'success_url' => route('checkout.success', absolute: true),

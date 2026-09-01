@@ -105,11 +105,67 @@ it('creates a Stripe Checkout Session and returns a redirect action', function (
         ->and($result->action->url)->toBe('https://checkout.stripe.test/c/pay/cs_test_larasell')
         ->and($sessions->parameters['mode'])->toBe('payment')
         ->and($sessions->parameters['locale'])->toBe('de')
-        ->and($sessions->parameters['line_items'][0]['quantity'])->toBe(2)
-        ->and($sessions->parameters['line_items'][0]['price_data']['unit_amount'])->toBe(1299)
+        ->and($sessions->parameters['line_items'])->toHaveCount(1)
+        ->and($sessions->parameters['line_items'][0]['quantity'])->toBe(1)
+        ->and($sessions->parameters['line_items'][0]['price_data']['unit_amount'])->toBe(2598)
+        ->and($sessions->parameters['line_items'][0]['price_data']['product_data']['name'])->toBe('Order '.$result->order->number)
         ->and($sessions->parameters['metadata']['payment_id'])->toBe((string) $result->payment->id)
         ->and($sessions->parameters['payment_intent_data']['metadata']['order_id'])->toBe((string) $result->order->id)
         ->and($sessions->options['idempotency_key'])->toBe('larasell-payment-'.$result->payment->id);
+});
+
+it('charges the authoritative payment amount instead of rebuilding the order total', function () {
+    $sessions = new FakeCheckoutSessions;
+    $provider = new StripePaymentProvider($sessions);
+    $order = Order::query()->create([
+        'number' => 'STRIPE-AUTHORITATIVE-TOTAL',
+        'currency' => Currency::EUR,
+        'customer_email' => 'total@example.com',
+        'customer_name' => 'Total Customer',
+        'status' => OrderStatus::PendingPayment,
+        'subtotal' => Price::of(2598),
+        'discount_total' => Price::of(998),
+        'shipping_price' => Price::of(500),
+        'total' => Price::of(2100),
+    ]);
+    $product = Product::query()->create([
+        'slug' => 'authoritative-total',
+        'name' => 'Authoritative total',
+        'price' => Price::of(1299),
+        'status' => Visibility::Visible,
+    ]);
+    $variant = $product->variants()->sole();
+    $order->items()->create([
+        'product_id' => $product->id,
+        'product_variant_id' => $variant->id,
+        'product_name' => $product->name,
+        'product_slug' => $product->slug->get(),
+        'unit_price' => Price::of(1299),
+        'quantity' => 2,
+        'total' => Price::of(2598),
+    ]);
+    $payment = $order->payments()->create([
+        'method' => 'stripe',
+        'provider' => 'stripe',
+        'status' => PaymentStatus::Pending,
+        'amount' => Price::of(2100),
+    ]);
+
+    $provider->initiate(new PaymentRequest(
+        'stripe',
+        $order->load('items'),
+        $payment,
+        [
+            'success_url' => 'https://shop.test/success',
+            'cancel_url' => 'https://shop.test/cancel',
+        ],
+    ));
+
+    expect($sessions->parameters['line_items'])->toHaveCount(1)
+        ->and($sessions->parameters['line_items'][0]['quantity'])->toBe(1)
+        ->and($sessions->parameters['line_items'][0]['price_data']['unit_amount'])->toBe(2100)
+        ->and($sessions->parameters['line_items'][0]['price_data']['product_data']['name'])
+        ->toBe('Order STRIPE-AUTHORITATIVE-TOTAL');
 });
 
 it('records a useful message when Stripe omits the refund failure reason', function () {
