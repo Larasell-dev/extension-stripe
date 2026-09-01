@@ -56,9 +56,16 @@ Additional Stripe Checkout Session options can be supplied under
 `session_options`. Larasell-controlled amount, customer, URL, and metadata
 fields cannot be overridden.
 
-Stripe Checkout receives the persisted Larasell payment amount as one
-order-level line item. Larasell remains authoritative for discounts, shipping,
-taxes, and rounding, so Stripe collects the exact order total.
+Stripe Checkout receives Larasell's canonical payment breakdown. Each order
+line is shown separately and shipping is included as its own line when present.
+The submitted amounts already include the applicable discounts, taxes, and
+rounding, so Stripe collects the exact persisted payment total.
+
+Stripe receives each entry with a quantity of `1` because a breakdown amount is
+the final amount for the complete order line. The purchased quantity remains
+visible in the Stripe item name, for example `2 x Coffee beans`. Stripe Tax
+should not be enabled for these Checkout Sessions because Larasell is the tax
+authority.
 
 ```php
 paymentOptions: [

@@ -5,6 +5,7 @@ namespace Larasell\Stripe;
 use InvalidArgumentException;
 use Larasell\Larasell\Contracts\PaymentProvider;
 use Larasell\Larasell\Contracts\RefundProvider;
+use Larasell\Larasell\Payments\PaymentLine;
 use Larasell\Larasell\Payments\PaymentRequest;
 use Larasell\Larasell\Payments\PaymentResult;
 use Larasell\Larasell\Payments\RedirectPaymentAction;
@@ -48,7 +49,7 @@ final readonly class StripePaymentProvider implements PaymentProvider, RefundPro
             'cancel_url' => $cancelUrl,
             'customer_email' => $request->order->customer_email,
             'client_reference_id' => (string) $request->order->getKey(),
-            'line_items' => [$this->lineItem($request)],
+            'line_items' => $this->lineItems($request),
             'metadata' => array_replace($metadata, [
                 'order_id' => (string) $request->order->getKey(),
                 'payment_id' => (string) $request->payment->getKey(),
@@ -121,19 +122,60 @@ final readonly class StripePaymentProvider implements PaymentProvider, RefundPro
         };
     }
 
-    /** @return array<string, mixed> */
-    private function lineItem(PaymentRequest $request): array
+    /** @return list<array<string, mixed>> */
+    private function lineItems(PaymentRequest $request): array
     {
-        return [
-            'quantity' => 1,
-            'price_data' => [
-                'currency' => strtolower($request->order->currency->value),
-                'unit_amount' => (int) $request->payment->amount->amount(),
-                'product_data' => [
-                    'name' => 'Order '.$request->order->number,
+        $lines = $request->breakdown->lines;
+
+        if ($request->breakdown->shipping !== null) {
+            $lines[] = $request->breakdown->shipping;
+        }
+
+        return array_map(function (PaymentLine $line) use ($request): array {
+            $description = $this->lineDescription($line);
+
+            return [
+                'quantity' => 1,
+                'price_data' => [
+                    'currency' => strtolower($request->order->currency->value),
+                    'unit_amount' => (int) $line->amount->amount(),
+                    'product_data' => [
+                        'name' => $line->quantity > 1
+                            ? "{$line->quantity} x {$line->name}"
+                            : $line->name,
+                        ...($description === null ? [] : ['description' => $description]),
+                        'metadata' => [
+                            'larasell_line_id' => $line->identifier,
+                        ],
+                    ],
                 ],
-            ],
-        ];
+            ];
+        }, $lines);
+    }
+
+    private function lineDescription(PaymentLine $line): ?string
+    {
+        $details = [];
+
+        foreach (['sku', 'barcode'] as $key) {
+            $value = $line->metadata[$key] ?? null;
+
+            if (is_string($value) && trim($value) !== '') {
+                $details[] = $value;
+            }
+        }
+
+        $variantDetails = $line->metadata['variant_details'] ?? null;
+
+        if (is_array($variantDetails)) {
+            foreach ($variantDetails as $name => $value) {
+                if ((is_string($name) || is_int($name)) && (is_string($value) || is_int($value) || is_float($value))) {
+                    $details[] = "{$name}: {$value}";
+                }
+            }
+        }
+
+        return $details === [] ? null : implode(' | ', $details);
     }
 
     private function requiredOption(PaymentRequest $request, string $key): string
