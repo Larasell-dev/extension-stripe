@@ -48,7 +48,7 @@ final readonly class StripePaymentProvider implements PaymentProvider, RefundPro
             'cancel_url' => $cancelUrl,
             'customer_email' => $request->order->customer_email,
             'client_reference_id' => (string) $request->order->getKey(),
-            'line_items' => $this->lineItems($request),
+            'line_items' => [$this->lineItem($request)],
             'metadata' => array_replace($metadata, [
                 'order_id' => (string) $request->order->getKey(),
                 'payment_id' => (string) $request->payment->getKey(),
@@ -121,36 +121,19 @@ final readonly class StripePaymentProvider implements PaymentProvider, RefundPro
         };
     }
 
-    /** @return array<int, array<string, mixed>> */
-    private function lineItems(PaymentRequest $request): array
+    /** @return array<string, mixed> */
+    private function lineItem(PaymentRequest $request): array
     {
-        $currency = strtolower($request->order->currency->value);
-        $items = $request->order->items->map(fn ($item): array => [
-            'quantity' => $item->quantity,
+        return [
+            'quantity' => 1,
             'price_data' => [
-                'currency' => $currency,
-                'unit_amount' => (int) $item->unit_price->amount(),
+                'currency' => strtolower($request->order->currency->value),
+                'unit_amount' => (int) $request->payment->amount->amount(),
                 'product_data' => [
-                    'name' => $item->product_name,
+                    'name' => 'Order '.$request->order->number,
                 ],
             ],
-        ])->all();
-
-        if ($request->order->getRawOriginal('shipping_price') !== null
-            && $request->order->shipping_price->amount() !== '0') {
-            $items[] = [
-                'quantity' => 1,
-                'price_data' => [
-                    'currency' => $currency,
-                    'unit_amount' => (int) $request->order->shipping_price->amount(),
-                    'product_data' => [
-                        'name' => $request->order->shipping_option_name ?? 'Shipping',
-                    ],
-                ],
-            ];
-        }
-
-        return $items;
+        ];
     }
 
     private function requiredOption(PaymentRequest $request, string $key): string
