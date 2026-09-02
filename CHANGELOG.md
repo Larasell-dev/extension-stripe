@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/Larasell-dev/extension-stripe/compare/v0.3.2...v0.3.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* verify payment via webhook ([501228f](https://github.com/Larasell-dev/extension-stripe/commit/501228f1d675673b4f62098d58e63f8fbc3a7530))
+
 ## [0.3.2](https://github.com/Larasell-dev/extension-stripe/compare/v0.3.1...v0.3.2) (2026-09-01)
 
 
