@@ -71,6 +71,39 @@ it('ignores unpaid completed sessions and metadata mismatches', function () {
         ->and($order->fresh()->status)->toBe(OrderStatus::PendingPayment);
 });
 
+it('does not settle a payment when the Checkout Session amount differs', function () {
+    [$order, $payment] = stripeWebhookPayment('cs_wrong_amount', 'WRONG-AMOUNT');
+
+    stripeWebhookRequest($this, stripeEventPayload(
+        'evt_wrong_amount',
+        'checkout.session.completed',
+        $payment,
+        ['payment_status' => 'paid', 'amount_total' => 999],
+    ))->assertOk();
+
+    expect($payment->fresh()->status)->toBe(PaymentStatus::Pending)
+        ->and($order->fresh()->status)->toBe(OrderStatus::PendingPayment);
+});
+
+it('does not settle a payment when the Checkout Session context differs', function (array $overrides) {
+    [$order, $payment] = stripeWebhookPayment('cs_wrong_context', 'WRONG-CONTEXT');
+
+    stripeWebhookRequest($this, stripeEventPayload(
+        'evt_wrong_context_'.md5(json_encode($overrides, JSON_THROW_ON_ERROR)),
+        'checkout.session.completed',
+        $payment,
+        array_replace_recursive(['payment_status' => 'paid'], $overrides),
+    ))->assertOk();
+
+    expect($payment->fresh()->status)->toBe(PaymentStatus::Pending)
+        ->and($order->fresh()->status)->toBe(OrderStatus::PendingPayment);
+})->with([
+    'currency' => [['currency' => 'usd']],
+    'mode' => [['mode' => 'subscription']],
+    'order metadata' => [['metadata' => ['order_id' => '999999']]],
+    'live mode' => [['livemode' => true]],
+]);
+
 it('finalizes pending refunds from signed Stripe webhooks only once', function () {
     [, $payment] = stripeWebhookPayment('cs_refund_succeeded', 'REFUND-SUCCEEDED');
     $payment->markAsPaid();
@@ -162,8 +195,15 @@ function stripeEventPayload(string $id, string $type, Payment $payment, array $o
     $session = array_replace_recursive([
         'id' => $payment->reference,
         'object' => 'checkout.session',
+        'amount_total' => (int) $payment->amount->amount(),
+        'currency' => strtolower($payment->order->currency->value),
+        'livemode' => false,
+        'mode' => 'payment',
         'payment_status' => 'unpaid',
-        'metadata' => ['payment_id' => (string) $payment->id],
+        'metadata' => [
+            'order_id' => (string) $payment->order_id,
+            'payment_id' => (string) $payment->id,
+        ],
     ], $overrides);
 
     return json_encode([

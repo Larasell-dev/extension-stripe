@@ -14,6 +14,8 @@ Add the Stripe credentials to the application environment:
 STRIPE_KEY=pk_test_...
 STRIPE_SECRET=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+# Optional when live mode cannot be inferred from STRIPE_SECRET:
+STRIPE_LIVEMODE=false
 ```
 
 Register the payment method in `config/larasell.php`:
@@ -94,7 +96,10 @@ Configure Stripe to deliver these events:
 - `checkout.session.expired`
 
 Webhook signatures are verified and Stripe event IDs are stored to prevent
-duplicate processing. Browser redirects never mark an order as paid.
+duplicate processing. Before changing a payment, Larasell verifies the Session
+amount, currency, payment mode, live/test mode, and order/payment metadata.
+The webhook signing secret binds events to the configured Stripe endpoint.
+Browser redirects never mark an order as paid.
 
 Also configure Stripe to deliver the refund lifecycle events:
 

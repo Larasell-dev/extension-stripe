@@ -97,7 +97,7 @@ final readonly class StripeWebhookHandler
             ->where('reference', $session->id)
             ->first();
 
-        if ($payment === null || (string) $payment->getKey() !== (string) ($session->metadata->payment_id ?? '')) {
+        if ($payment === null || ! $this->sessionMatchesPayment($session, $payment)) {
             return;
         }
 
@@ -107,6 +107,26 @@ final readonly class StripeWebhookHandler
             'checkout.session.async_payment_failed' => $this->fail($payment),
             'checkout.session.expired' => $this->cancel($payment),
         };
+    }
+
+    private function sessionMatchesPayment(Session $session, Payment $payment): bool
+    {
+        $expectedLiveMode = config('larasell-stripe.livemode');
+
+        if (! is_bool($expectedLiveMode)) {
+            $secret = config('larasell-stripe.secret');
+            $expectedLiveMode = is_string($secret) && str_contains($secret, '_live_');
+        }
+
+        return (string) $payment->getKey() === (string) ($session->metadata->payment_id ?? '')
+            && (string) $payment->order_id === (string) ($session->metadata->order_id ?? '')
+            && $session->mode === 'payment'
+            && is_int($session->amount_total)
+            && $session->amount_total === (int) $payment->amount->amount()
+            && is_string($session->currency)
+            && strtolower($session->currency) === strtolower($payment->order->currency->value)
+            && is_bool($session->livemode)
+            && $session->livemode === $expectedLiveMode;
     }
 
     private function succeed(Payment $payment): void
